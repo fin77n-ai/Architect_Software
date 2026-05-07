@@ -1,0 +1,17 @@
+# Python 忽略文件
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.env
+
+# Node.js 忽略文件 (如果以后加了前端构建)
+node_modules/
+
+# Architect 自身缓存
+.architect/
+ui/data.json
+
+# 系统文件
+.DS_Store

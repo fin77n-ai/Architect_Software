@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>Architect 诊断与架构全景图</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/vs2015.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 0; display: flex; height: 100vh; background-color: #1e1e1e; color: #fff; overflow: hidden; }
+        
+        #graph-container { flex: 2; border-right: 1px solid #333; background-color: #252526; position: relative; }
+        .title-bar { position: absolute; top: 15px; left: 20px; font-size: 22px; font-weight: bold; color: #fff; z-index: 10; text-shadow: 1px 1px 3px #000; pointer-events: none; }
+        
+        /* 新增：过滤器控制台样式 */
+        #filter-panel { position: absolute; top: 50px; left: 20px; z-index: 10; background: rgba(30, 30, 30, 0.8); padding: 10px; border-radius: 8px; border: 1px solid #444; backdrop-filter: blur(5px); }
+        .filter-label { display: flex; align-items: center; margin-bottom: 5px; font-size: 13px; cursor: pointer; }
+        .filter-checkbox { margin-right: 8px; cursor: pointer; }
+        .color-box { width: 12px; height: 12px; border-radius: 3px; margin-right: 8px; display: inline-block; }
+        
+        #panel { flex: 1; display: flex; flex-direction: column; background-color: #1e1e1e; min-width: 400px; max-width: 600px; }
+        #diagnosis-section { padding: 20px; border-bottom: 1px solid #333; flex-shrink: 0; max-height: 40%; overflow-y: auto; }
+        h2 { margin-top: 0; border-bottom: 1px solid #444; padding-bottom: 10px; font-size: 16px; color: #4CAF50; text-transform: uppercase; letter-spacing: 1px; }
+        .diagnosis { line-height: 1.6; font-size: 14px; color: #d4d4d4; white-space: pre-wrap; }
+        
+        #code-section { padding: 20px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+        #code-title { font-size: 14px; color: #888; margin-bottom: 10px; word-break: break-all; }
+        pre { margin: 0; flex: 1; border-radius: 6px; border: 1px solid #333; }
+        code { font-family: 'Courier New', Courier, monospace; font-size: 13px; height: 100%; overflow-y: auto; }
+        
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #1e1e1e; }
+        ::-webkit-scrollbar-thumb { background: #555; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+    </style>
+</head>
+<body>
+    <div id="graph-container">
+        <div class="title-bar">🗺️ Architect 全景架构图</div>
+        <!-- 新增：过滤器控制台 -->
+        <div id="filter-panel">
+            <label class="filter-label"><input type="checkbox" class="filter-checkbox" value="Entry" checked><span class="color-box" style="background:#F44336"></span>🚪 Entry (入口)</label>
+            <label class="filter-label"><input type="checkbox" class="filter-checkbox" value="UI" checked><span class="color-box" style="background:#E91E63"></span>🎨 UI (视图)</label>
+            <label class="filter-label"><input type="checkbox" class="filter-checkbox" value="Logic" checked><span class="color-box" style="background:#9C27B0"></span>🧠 Logic (逻辑)</label>
+            <label class="filter-label"><input type="checkbox" class="filter-checkbox" value="Data" checked><span class="color-box" style="background:#4CAF50"></span>💾 Data (数据)</label>
+            <label class="filter-label"><input type="checkbox" class="filter-checkbox" value="Utils" checked><span class="color-box" style="background:#9E9E9E"></span>⚙️ Utils (工具)</label>
+            <label class="filter-label"><input type="checkbox" class="filter-checkbox" value="Unknown" checked><span class="color-box" style="background:#607D8B"></span>📁 Unknown (未分类)</label>
+        </div>
+    </div>
+    
+    <div id="panel">
+        <div id="diagnosis-section">
+            <h2>💡 架构师诊断报告</h2>
+            <div id="diagnosis-text" class="diagnosis">正在加载数据...</div>
+        </div>
+        <div id="code-section">
+            <h2>📄 文件源码预览</h2>
+            <div id="code-title">点击左侧节点查看代码</div>
+            <pre><code id="code-block" class="language-python"># Select a node to view its source code.</code></pre>
+        </div>
+    </div>
+
+    <script>
+        let network = null;
+        let allNodes = null;
+        let allEdges = null;
+        let nodesView = null;
+        let edgesView = null;
+
+        // 核心新增：过滤逻辑
+        function updateFilter() {
+            const checkboxes = document.querySelectorAll('.filter-checkbox');
+            const activeGroups = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+
+            // 过滤节点：只显示被勾选的组
+            nodesView.setFilter(function (node) {
+                return activeGroups.includes(node.group);
+            });
+
+            // 过滤连线：如果连线的两端有任何一端被隐藏了，这条线也隐藏
+            edgesView.setFilter(function (edge) {
+                let fromNode = allNodes.get(edge.from);
+                let toNode = allNodes.get(edge.to);
+                if (!fromNode || !toNode) return false;
+                return activeGroups.includes(fromNode.group) && activeGroups.includes(toNode.group);
+            });
+        }
+
+        // 绑定复选框事件
+        document.querySelectorAll('.filter-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateFilter);
+        });
+
+        function highlightConnections(selectedNodeId) {
+            if (!selectedNodeId) {
+                allNodes.forEach(node => {
+                    // 恢复原始颜色，这里简单处理，实际应用中可以存下原始颜色
+                    let bg = node.color ? node.color.background : '#d32f2f';
+                    let border = node.color ? node.color.border : '#ff5252';
+                    allNodes.update({id: node.id, color: { background: bg, border: border }, font: {color: '#fff'}});
+                });
+                allEdges.forEach(edge => allEdges.update({id: edge.id, color: { opacity: 1.0 }}));
+                return;
+            }
+
+            let connectedNodes = new Set([selectedNodeId]);
+            let connectedEdges = new Set();
+            
+            allEdges.forEach(edge => {
+                if (edge.from === selectedNodeId || edge.to === selectedNodeId) {
+                    connectedEdges.add(edge.id);
+                    connectedNodes.add(edge.from);
+                    connectedNodes.add(edge.to);
+                }
+            });
+
+            allNodes.forEach(node => {
+                if (connectedNodes.has(node.id)) {
+                    if (node.id === selectedNodeId) {
+                        allNodes.update({id: node.id, color: { background: '#FF9800', border: '#fff' }, font: {color: '#fff'}});
+                    } else {
+                        let bg = node.color ? node.color.background : '#d32f2f';
+                        let border = node.color ? node.color.border : '#ff5252';
+                        allNodes.update({id: node.id, color: { background: bg, border: border }, font: {color: '#fff'}});
+                    }
+                } else {
+                    allNodes.update({id: node.id, color: { background: '#444', border: '#333' }, font: {color: '#666'}});
+                }
+            });
+
+            allEdges.forEach(edge => {
+                if (connectedEdges.has(edge.id)) {
+                    allEdges.update({id: edge.id, color: { color: '#FF9800', opacity: 1.0 }});
+                } else {
+                    allEdges.update({id: edge.id, color: { color: '#333', opacity: 0.1 }});
+                }
+            });
+        }
+
+        function loadCode(nodeId) {
+            document.getElementById('code-title').textContent = "正在加载: " + nodeId;
+            document.getElementById('code-block').textContent = "Loading...";
+            fetch('/api/code?file=' + encodeURIComponent(nodeId))
+                .then(response => response.text())
+                .then(code => {
+                    document.getElementById('code-title').textContent = nodeId;
+                    document.getElementById('code-block').textContent = code;
+                    hljs.highlightElement(document.getElementById('code-block'));
+                })
+                .catch(err => {
+                    document.getElementById('code-block').textContent = "加载代码失败: " + err;
+                });
+        }
+
+        fetch('/data.json')
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('diagnosis-text').textContent = data.diagnosis;
+
+                data.edges.forEach((edge, index) => { edge.id = 'e' + index; });
+
+                allNodes = new vis.DataSet(data.nodes);
+                allEdges = new vis.DataSet(data.edges);
+                
+                // 核心新增：使用 DataView 来实现过滤功能，而不破坏原始数据
+                nodesView = new vis.DataView(allNodes);
+                edgesView = new vis.DataView(allEdges);
+
+                var container = document.getElementById('graph-container');
+                var graphData = { nodes: nodesView, edges: edgesView };
+                
+                var options = {
+                    nodes: { shape: 'box', margin: 10, font: { color: '#fff', size: 14 } },
+                    edges: { arrows: 'to', width: 1.5, smooth: { type: 'cubicBezier', forceDirection: 'vertical', roundness: 0.4 } },
+                    layout: { hierarchical: { direction: 'UD', sortMethod: 'directed', nodeSpacing: 150, levelSeparation: 150 } },
+                    physics: false,
+                    interaction: { hover: true, tooltipDelay: 200 }
+                };
+                
+                network = new vis.Network(container, graphData, options);
+
+                network.on("click", function (params) {
+                    if (params.nodes.length > 0) {
+                        let nodeId = params.nodes[0];
+                        highlightConnections(nodeId);
+                        loadCode(nodeId);
+                    } else {
+                        highlightConnections(null);
+                        document.getElementById('code-title').textContent = "点击左侧节点查看代码";
+                        document.getElementById('code-block').textContent = "# Select a node to view its source code.";
+                    }
+                });
+            })
+            .catch(err => {
+                document.getElementById('diagnosis-text').textContent = "加载数据失败: " + err;
+            });
+    </script>
+</body>
+</html>
