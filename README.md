@@ -17,9 +17,8 @@ Architect 是一个运行在本地的轻量级 CLI 工具。它结合了**传统
 
 1. **克隆项目到本地**
    ```bash
-   # 假设放在桌面
    cd ~/Desktop
-   git clone <你的仓库地址> Architect_Software
+   git clone https://github.com/fin77n-ai/Architect_Software.git
    ```
 
 2. **配置 DeepSeek API Key**
@@ -73,5 +72,24 @@ architect map
 ## 💡 为什么做这个工具？
 目前的 AI 编程工具（如 Cursor）在处理大型项目时，往往面临“上下文过长、成本高昂、容易幻觉”的问题。Architect 的哲学是：**让传统静态分析工具干苦力（寻址、画图），让 AI 做大脑（局部诊断、语义分类）**。通过这种混合架构，实现了体验与成本的完美平衡。
 
+## 📁 项目结构
+
+```
+Architect_Software/
+├── ai/                  # AI 调用模块 (DeepSeek)
+├── scanner/             # 静态扫描引擎
+├── tracer/              # 错误追踪与代码提取
+├── ui/                  # 前端可视化 (Vis.js)
+├── examples/            # 示例代码（用于功能演示）
+├── main.py              # 程序入口
+├── .env.example         # 环境变量配置模板
+└── ARCHITECTURE.md      # 自动生成的架构文档
+```
+
 ---
-*Built with passion and a lot of prompts.* 🚀
+
+> **English Summary**: Architect is a zero-dependency local CLI that combines static analysis with LLM diagnostics. Run `architect python3 script.py` to trace errors across files, or `architect map` to generate an interactive architecture graph in your browser. Powered by DeepSeek API.
+
+---
+
+*Built with passion and a lot of prompts by [@fin77n-ai](https://github.com/fin77n-ai) & dsv4pro* 🚀
