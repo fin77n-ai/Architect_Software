@@ -200,6 +200,9 @@ def generate_architecture_md(directory, nodes, edges, category_map, file_info_di
                 md_content += f"  - 依赖 -> `{', '.join(deps_map[file_path])}`\n"
         md_content += "\n"
 
+    if os.path.exists(md_path):
+        print(f"📄 ARCHITECTURE.md 已存在，跳过覆盖（progress log 模式，手动编辑保留）")
+        return
     with open(md_path, 'w', encoding='utf-8') as f:
         f.write(md_content)
     print(f"📄 已生成架构文档: {md_path}")
