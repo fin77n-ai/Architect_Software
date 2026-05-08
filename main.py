@@ -16,6 +16,7 @@ from tracer.error_catcher import run_and_catch
 from tracer.multi_extractor import extract_multi_file_context
 from ai.translator import translate_error_with_deepseek
 from scanner.static_mapper import scan_project, save_cache, detect_run_command
+from scanner.brief_generator import generate_brief, generate_handoff_template, diff_architecture, format_diff
 
 # 全局变量，记录用户当前扫描的项目根目录
 PROJECT_ROOT = ""
@@ -91,8 +92,15 @@ def main():
     global PROJECT_ROOT
     print("=== 🛠️ Architect 诊断助手 ===")
     if len(sys.argv) < 2:
-        print("用法 1: architect <命令> (例如: architect python3 script.py)")
-        print("用法 2: architect map - 静态扫描当前项目并生成全局架构图")
+        print("用法:")
+        print("  architect map                    — 扫描项目，生成架构图")
+        print("  architect doctor                 — 运行项目并自动诊断报错")
+        print("  architect brief                  — 生成完整项目 Brief 给 AI 执行模型")
+        print("  architect brief --module [层]    — 生成指定模块 Brief（Entry/UI/Logic/Data/Utils）")
+        print("  architect handoff                — 生成 Handoff 模板（让 AI 执行模型填写）")
+        print("  architect handoff --module [层]  — 指定模块的 Handoff 模板")
+        print("  architect diff                   — 对比当前代码与上次 map 的架构变化")
+        print("  architect <命令>                 — 运行命令并诊断报错（例如: architect python3 main.py）")
         return
 
     PROJECT_ROOT = os.getcwd()
@@ -177,6 +185,49 @@ def main():
                     return
             else:
                 print(f"\n💀 已连续失败 {MAX_RETRIES} 次，请检查上方的 AI 诊断报告后手动修复。")
+        return
+
+    if sys.argv[1] == "brief":
+        cache_path = os.path.join(PROJECT_ROOT, '.architect', 'index.json')
+        if not os.path.exists(cache_path):
+            print("⚠️ 还没有架构缓存，请先运行: architect map")
+            return
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            cache = json.load(f)
+        module = None
+        if '--module' in sys.argv:
+            idx = sys.argv.index('--module')
+            if idx + 1 < len(sys.argv):
+                module = sys.argv[idx + 1]
+        print(generate_brief(cache, PROJECT_ROOT, module))
+        return
+
+    if sys.argv[1] == "handoff":
+        cache_path = os.path.join(PROJECT_ROOT, '.architect', 'index.json')
+        if not os.path.exists(cache_path):
+            print("⚠️ 还没有架构缓存，请先运行: architect map")
+            return
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            cache = json.load(f)
+        module = None
+        if '--module' in sys.argv:
+            idx = sys.argv.index('--module')
+            if idx + 1 < len(sys.argv):
+                module = sys.argv[idx + 1]
+        print(generate_handoff_template(cache, module))
+        return
+
+    if sys.argv[1] == "diff":
+        cache_path = os.path.join(PROJECT_ROOT, '.architect', 'index.json')
+        if not os.path.exists(cache_path):
+            print("⚠️ 还没有架构缓存，请先运行: architect map")
+            return
+        with open(cache_path, 'r', encoding='utf-8') as f:
+            old_cache = json.load(f)
+        print("🔍 正在重新扫描项目结构...")
+        new_data = scan_project(PROJECT_ROOT)
+        diff = diff_architecture(old_cache, new_data)
+        print(format_diff(diff))
         return
 
     command_to_run = sys.argv[1:]
