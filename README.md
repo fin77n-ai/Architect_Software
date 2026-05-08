@@ -23,9 +23,14 @@ Architect 是一个运行在本地的轻量级 CLI 工具。它结合了**传统
 
 2. **配置 DeepSeek API Key**
    Architect 默认使用极具性价比的 `deepseek-chat` (Flash) 模型。
+   
+   在项目根目录创建 `.env` 文件（注意：`.env` 是隐藏文件，在 Mac 上可用 `Cmd + Shift + .` 显示）：
    ```bash
-   # 将这行添加到你的 ~/.zshrc 或 ~/.bashrc 中
-   export DEEPSEEK_API_KEY="your_api_key_here"
+   cp .env.example .env
+   ```
+   然后用文本编辑器打开 `.env` 文件，填入你的 API Key：
+   ```env
+   DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
    ```
 
 3. **注册为全局命令**
