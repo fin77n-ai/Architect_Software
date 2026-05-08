@@ -16,7 +16,7 @@ from tracer.error_catcher import run_and_catch
 from tracer.multi_extractor import extract_multi_file_context
 from ai.translator import translate_error_with_deepseek
 from scanner.static_mapper import scan_project, save_cache, detect_run_command
-from scanner.brief_generator import generate_brief, generate_handoff_template, diff_architecture, format_diff
+from scanner.brief_generator import generate_brief, generate_handoff_template, diff_architecture, format_diff, generate_claude_md
 
 # 全局变量，记录用户当前扫描的项目根目录
 PROJECT_ROOT = ""
@@ -119,6 +119,8 @@ def main():
             except (EOFError, KeyboardInterrupt):
                 run_command = None
         save_cache(PROJECT_ROOT, graph_data, run_command)
+        cache_for_md = {"nodes": graph_data["nodes"], "edges": graph_data["edges"], "run_command": run_command}
+        generate_claude_md(PROJECT_ROOT, cache_for_md)
         ui_data = {
             "nodes": graph_data["nodes"],
             "edges": graph_data["edges"],
