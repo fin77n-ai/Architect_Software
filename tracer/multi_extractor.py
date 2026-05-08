@@ -62,7 +62,7 @@ def extract_multi_file_context(error_text, context_lines=5, cwd=None):
     if not call_chain:
         return None, []
 
-    call_chain = call_chain[-3:]
+    call_chain = call_chain[-10:]
     extracted_contexts = []
     valid_chain = []
     

@@ -14,7 +14,4 @@ def run_and_catch(command_list, cwd=None):
         return None
     except subprocess.CalledProcessError as e:
         print("\n❌ 捕获到程序崩溃！")
-        error_output = e.stderr
-        error_lines = error_output.strip().split('\n')
-        last_20_lines = '\n'.join(error_lines[-20:])
-        return last_20_lines
+        return e.stderr.strip()

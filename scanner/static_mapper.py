@@ -85,7 +85,7 @@ def classify_files_with_ai(file_info_dict):
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(req, context=ctx) as response:
+        with urllib.request.urlopen(req, context=ctx, timeout=15) as response:
             result = json.loads(response.read().decode('utf-8'))
             return json.loads(result['choices'][0]['message']['content'])
     except Exception as e:
@@ -255,11 +255,34 @@ def scan_project(directory):
     generate_architecture_md(directory, nodes, unique_edges, category_map, file_info_dict)
     return {"nodes": nodes, "edges": unique_edges}
 
-def save_cache(directory, data):
+def detect_run_command(directory):
+    pkg_path = os.path.join(directory, 'package.json')
+    if os.path.exists(pkg_path):
+        try:
+            with open(pkg_path, 'r', encoding='utf-8') as f:
+                pkg = json.load(f)
+            scripts = pkg.get('scripts', {})
+            for script in ['dev', 'start']:
+                if script in scripts:
+                    return ['npm', 'run', script]
+        except Exception:
+            pass
+    for entry in ['main.py', 'app.py', 'run.py', 'server.py', 'index.py']:
+        if os.path.exists(os.path.join(directory, entry)):
+            return ['python3', entry]
+    for entry in ['index.js', 'server.js', 'app.js']:
+        if os.path.exists(os.path.join(directory, entry)):
+            return ['node', entry]
+    return None
+
+def save_cache(directory, data, run_command=None):
     cache_dir = os.path.join(directory, '.architect')
     if not os.path.exists(cache_dir): os.makedirs(cache_dir)
+    cache_data = {"nodes": data["nodes"], "edges": data["edges"]}
+    if run_command:
+        cache_data["run_command"] = run_command
     with open(os.path.join(cache_dir, 'index.json'), 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(cache_data, f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
     test_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
