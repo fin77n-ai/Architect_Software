@@ -17,6 +17,7 @@ from tracer.multi_extractor import extract_multi_file_context
 from ai.translator import translate_error_with_deepseek
 from scanner.static_mapper import scan_project, save_cache, detect_run_command
 from scanner.brief_generator import generate_brief, generate_handoff_template, diff_architecture, format_diff
+from scanner.js_checker import check_frontend
 
 # 全局变量，记录用户当前扫描的项目根目录
 PROJECT_ROOT = ""
@@ -93,6 +94,7 @@ def main():
     print("=== 🛠️ Architect 诊断助手 ===")
     if len(sys.argv) < 2:
         print("用法:")
+        print("  architect ship                   — 一键流水线：map → 前端检查 → smoke test → 输出 Brief")
         print("  architect map                    — 扫描项目，生成架构图")
         print("  architect doctor                 — 运行项目并自动诊断报错")
         print("  architect brief                  — 生成完整项目 Brief 给 AI 执行模型")
@@ -100,10 +102,76 @@ def main():
         print("  architect handoff                — 生成 Handoff 模板（让 AI 执行模型填写）")
         print("  architect handoff --module [层]  — 指定模块的 Handoff 模板")
         print("  architect diff                   — 对比当前代码与上次 map 的架构变化")
+        print("  architect mcp                    — 启动 MCP server（stdio，供 Claude Code / Hermes 调用）")
         print("  architect <命令>                 — 运行命令并诊断报错（例如: architect python3 main.py）")
         return
 
     PROJECT_ROOT = os.getcwd()
+
+    if sys.argv[1] == "mcp":
+        mcp_path = os.path.join(SOFTWARE_DIR, 'mcp_server.py')
+        os.execlp(sys.executable, sys.executable, mcp_path)
+        return  # unreachable
+
+    if sys.argv[1] == "ship":
+        print("🚀 Architect Ship — 全自动流水线")
+        print("=" * 50)
+
+        # Step 1: Map (silent, no UI)
+        print("\n📡 Step 1/3: 扫描项目架构...")
+        run_command = detect_run_command(PROJECT_ROOT)
+        if not run_command:
+            print("💬 未检测到运行命令，请输入（例如: python3 main.py）：")
+            try:
+                cmd_input = input("> ").strip()
+                run_command = cmd_input.split() if cmd_input else None
+            except (EOFError, KeyboardInterrupt):
+                run_command = None
+        if not run_command:
+            print("❌ 没有运行命令，Ship 中止。")
+            return
+        graph_data = scan_project(PROJECT_ROOT, run_command)
+        save_cache(PROJECT_ROOT, graph_data, run_command)
+        print(f"  ✅ 扫描完成 — {len(graph_data['nodes'])} 个节点，{len(graph_data['edges'])} 条依赖边")
+
+        # Step 2: Frontend static check
+        print("\n🔍 Step 2/3: 前端静态检查...")
+        fe_issues, fe_stats = check_frontend(PROJECT_ROOT)
+        if fe_issues:
+            print(f"  ⚠️  发现 {fe_stats['missing']} 个前端问题：")
+            for issue in fe_issues:
+                print(f"    {issue}")
+            print("\n❌ Ship 中止 — 请修复前端问题后重试。")
+            return
+        print(f"  ✅ 前端通过 ({fe_stats['html']} HTML / {fe_stats['js']} JS)")
+
+        # Step 3: Smoke test (headless doctor, no browser)
+        print("\n🩺 Step 3/3: Smoke test（运行项目）...")
+        error_text = run_and_catch(run_command, cwd=PROJECT_ROOT)
+        if error_text:
+            print(f"  ❌ 程序崩溃：")
+            for line in error_text.splitlines()[:20]:
+                print(f"    {line}")
+            print("\n❌ Ship 中止 — 请修复崩溃后重试。")
+            return
+        print(f"  ✅ Smoke test 通过")
+
+        # Step 4: Output handoff brief
+        print("\n" + "=" * 50)
+        print("🎁 全部检查通过！以下是交接 Brief（直接复制给 Gemini）：")
+        print("=" * 50 + "\n")
+        brief_path = os.path.join(PROJECT_ROOT, 'ARCHITECTURE_BRIEF.MD')
+        if os.path.exists(brief_path):
+            with open(brief_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            print(content)
+            print(f"\n📋 源文件: {brief_path}")
+        else:
+            cache_path = os.path.join(PROJECT_ROOT, '.architect', 'index.json')
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                cache = json.load(f)
+            print(generate_brief(cache, PROJECT_ROOT))
+        return
 
     if sys.argv[1] == "map":
         print("🗺️ 启动全局架构扫描模式...")
@@ -150,6 +218,16 @@ def main():
 
         arch_lines = [f"  {e['from']} → {e['to']}" for e in cache.get('edges', [])]
         arch_context = "项目文件依赖关系：\n" + "\n".join(arch_lines) if arch_lines else None
+
+        # --- Frontend static check (runs before backend, no browser needed) ---
+        print("\n🔍 前端静态检查中...")
+        fe_issues, fe_stats = check_frontend(PROJECT_ROOT)
+        if fe_issues:
+            print(f"⚠️  发现 {fe_stats['missing']} 个前端问题（扫描了 {fe_stats['html']} 个 HTML、{fe_stats['js']} 个 JS 文件）：")
+            for issue in fe_issues:
+                print(issue)
+        else:
+            print(f"✅ 前端检查通过（{fe_stats['html']} HTML / {fe_stats['js']} JS，无未定义函数调用）")
 
         MAX_RETRIES = 3
         attempts = 0
